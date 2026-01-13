@@ -78,9 +78,9 @@ for gal in gals:
         dataH = np.flip(dataH, axis=0)
 
 #         mzpVIS = comp_gals['mzpVIS'] [comp_gals['OBJECT_ID']==gal][0] 
-        row['mzpVIS']
+        mzpVIS = row['mzpVIS']
 #         mzpH = comp_gals['mzpH'][comp_gals['OBJECT_ID']==gal][0]  
-        row['mzpH']
+        mzpH = row['mzpH']
         print(mzpVIS,mzpH)
         color,dataBmasked,dataRmasked = computeColor(dataVIS, dataH, mask, mzpVIS, mzpH, do_print=True)
         row['(I-H)'] = color
