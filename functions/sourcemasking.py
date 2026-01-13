@@ -305,10 +305,15 @@ def createRequiredVariables(data, model_final, source_mask_final, total_backgrou
 
     mask_center = maskCircle(data, geometry.x0, geometry.y0, rout=inner_radius, rin=0)
 
-
+    # old version
     # mask_model = model_final <= 1.5 #* total_background   #ballsy change
     # mask_combined = np.array(~(mask_model | source_mask_final), dtype=int)
-
+    
+    # mask for color computation, center included
+    mask_model = ~source_mask_final
+    mask_model &= aperture_mask
+    
+    # mask for sbf computation, center excluded
     mask_combined = ~(mask_center | source_mask_final)
     mask_combined &= aperture_mask
 
@@ -326,7 +331,7 @@ def createRequiredVariables(data, model_final, source_mask_final, total_backgrou
             plt.savefig(image_path + "/" + image_title)
         if plot_plots:
             plt.show()
-    return aperture_mask, mask_combined, nri
+    return mask_model, mask_combined, nri
 
 
 ##############################################################################################

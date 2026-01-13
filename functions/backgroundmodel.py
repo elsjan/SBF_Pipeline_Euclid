@@ -6,6 +6,7 @@
 
 import numpy as np
 from tqdm import tqdm  # changed to not-notebook version
+from astropy.io import fits
 
 import sep
 # mgefit find_galaxy: To find the peak & orientation of a galaxy in an image
@@ -254,3 +255,13 @@ def mainBackgroundEstimation(data, mask_cr, image_path=None, make_plots=True, pl
         data -= total_bckgr
     sex_bckgr = background.globalback
     return data, total_bckgr, sex_bckgr
+
+def sexFieldBackgroundEstimation(data,field_path):
+    hdu = fits.open(field_path)
+    field_data = hdu[0].data
+    hdu.close()
+    background = sep.Background(field_data.astype(np.float32), bw=64, bh=64, fw=3, fh=3)
+    total_bckgr = background.globalback
+    data -= total_bckgr
+    return data, total_bckgr
+    

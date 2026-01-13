@@ -182,7 +182,7 @@ def fitFinalEllipseModel(data, source_mask, center_sources, mask_cr=None):
 # Other version used in pipeline
 ################################################################
 
-def MainFitEllipseModel(data, mask_cr=None, geometry=None, make_plots=False, plot_plots=False, sma_normfactor=1, final=False, image_path=None, method='v1'):
+def MainFitEllipseModel(data, mask_cr=None, geometry=None, make_plots=False, plot_plots=False, sma_normfactor=1, sma_rescale=1, final=False, image_path=None, method='v1'):
     """
     New version of fitInitialEllipseModel function
     """
@@ -357,7 +357,9 @@ def MainFitEllipseModel(data, mask_cr=None, geometry=None, make_plots=False, plo
             return 
 
     elif method == 'v6':
+        geometry.sma *= sma_rescale 
         ellipse = Ellipse(masked_data, geometry)
+        geometry.sma /= sma_rescale 
         aperture = EllipticalAperture((geometry.x0, geometry.y0), geometry.sma, geometry.sma*(1-geometry.eps), geometry.pa)
         if make_plots:
             fig, ax = plt.subplots(figsize=(8, 8))
@@ -395,7 +397,9 @@ def MainFitEllipseModel(data, mask_cr=None, geometry=None, make_plots=False, plo
             if masked_data.mask[y0, x0]:
                 print("Center pixel is masked - unmasking central area.")
                 masked_data.mask = ~(~masked_data.mask | centralAnnulusMask(nonandata, geometry=geometry, inner_radius=10))
+            geometry.sma *= sma_rescale 
             ellipse = Ellipse(masked_data, geometry)
+            geometry.sma /= sma_rescale 
             aperture = EllipticalAperture((geometry.x0, geometry.y0), geometry.sma, geometry.sma*(1-geometry.eps), geometry.pa)
             if make_plots:
                 fig, ax = plt.subplots(figsize=(8, 8))
