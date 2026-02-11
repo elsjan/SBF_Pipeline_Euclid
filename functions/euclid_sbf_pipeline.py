@@ -5,10 +5,8 @@
 # Version 2. Implementing unity in geometry
 ##########################################################################
 
-version = "2.4"
+version = "2.3"
 # changes: 
-# - improved version aperture model
-
 # - background calculation not disturbed by nans/infs
 # - masked objects larger masks
 # - ellipse fit smaller step size
@@ -87,36 +85,24 @@ def MainPipeline(data_path, file_path=None, field_path=None, image_path=None,
     if premstop:
         return 0,0,0,0,mzp
     if ellipsefitter == 'a1':
-        print("\n3. Fitting initial aperture ellipse model ...")
-        residual_basic, model_basic, geometry = fitApertureModel(data, mask_cr=mask_cr, geometry=None, make_plots=make_plots, plot_plots=plot_plots, final=False, image_path=image_path)
-        if maxarea_sourcemask == None:
-            if filter == 'VIS':
-                scalar_maxarea = 1
-            elif filter == 'H':
-                scalar_maxarea = 9
-            maxarea_sourcemask = 1500/scalar_maxarea
-
-        print("\n4. Finding initial source mask ...")
-        source_mask = maskBackgroundSources(residual_basic, mask_cr=mask_cr, make_plots=make_plots, plot_plots=plot_plots, maxarea=maxarea_sourcemask, r=5)
-
-        print("\n5. Fitting final aperture ellipse model ...")
-        residual_final, model_final, geometry = fitApertureModel(data, mask_cr=source_mask, geometry=geometry, make_plots=make_plots, plot_plots=plot_plots, final=True, image_path=image_path)
+        print("\n5. Fitting aperture ellipse model ...")
+        residual_final, model_final, geometry = fitApertureModel(data, mask_cr=mask_cr, geometry=None, make_plots=make_plots, plot_plots=plot_plots, final=True, image_path=image_path)
 
     else:
         print("\n3. Fitting initial ellipse model ...")
         residual_basic, model_basic, geometry = MainFitEllipseModel(data, mask_cr=mask_cr, make_plots=make_plots, plot_plots=plot_plots, final=False, method=ellipsefitter, sma_rescale=sma_rescale)
 
         print("\n4. Finding initial source mask ...")
-        source_mask = maskBackgroundSources(residual_basic, mask_cr=mask_cr, make_plots=make_plots, plot_plots=plot_plots, maxarea=maxarea_sourcemask, r=5)
+        source_mask = maskBackgroundSources(residual_basic, mask_cr=mask_cr, make_plots=make_plots, plot_plots=plot_plots, maxarea=maxarea_sourcemask, r=10)
 
         print("\n5. Fitting final ellipse model ...")
         residual_final, model_final, geometry = MainFitEllipseModel(data, mask_cr=source_mask, geometry=geometry, make_plots=make_plots, plot_plots=plot_plots, final=True, image_path=image_path,method=ellipsefitter, sma_rescale=sma_rescale)
 
     print("\n6. Finding final source mask ...")
-    source_mask_final = maskBackgroundSources(residual_final, mask_cr=mask_cr, make_plots=make_plots, plot_plots=plot_plots, maxarea=maxarea_sourcemask, image_path=image_path, final=True, original_image=data, r=8)
+    source_mask_final = maskBackgroundSources(residual_final, mask_cr=mask_cr, make_plots=make_plots, plot_plots=plot_plots, maxarea=maxarea_sourcemask, image_path=image_path, final=True, original_image=data, r=10)
  
     print("\n7. Creating required variables ...")
-    mask_model, mask_combined, nri = createRequiredVariables(data, model_final, source_mask_final, psf, total_bckgr, geometry, make_plots=make_plots, plot_plots=plot_plots, image_path=image_path)
+    mask_model, mask_combined, nri = createRequiredVariables(data, model_final, source_mask_final, total_bckgr, geometry, make_plots=make_plots, plot_plots=plot_plots, image_path=image_path)
     
     print("\n8 Calculate power spectra  ...")
     image_ps, expected_ps, sbf, noise = calculateSBF(nri, mask_combined, psf,

@@ -15,11 +15,11 @@ sys.path.append("./functions")
 # Own function imports 
 from plotting import imdisplay
 
-output_folder = "output_sota_v6"
+output_folder = "output_Fornax_sota_v6"
 gals = sorted(os.listdir(output_folder))
 
-comp_gals = Table(names=('OBJECT_ID', 'sbfVIS', 'sbfH', 'sbfmagVIS', 'sbfmagH', '(I-H)', 'backgrVIS', 'backgrH', 'smaVIS', 'smaH', 'mzpVIS', 'mzpH','commentVIS','commentH')
-                , dtype=(str, np.float64, np.float64, np.float64, np.float64, np.float64, np.float64, np.float64, np.float64, np.float64, np.float64, np.float64, str, str))
+comp_gals = Table(names=('OBJECT_ID', 'sbfVIS', 'sbfH', 'sbfmagVIS', 'sbfmagH', '(I-H)', 'backgrVIS', 'backgrH', 'smaVIS', 'smaH','commentVIS','commentH')
+                , dtype=(str, np.float64, np.float64, np.float64, np.float64, np.float64, np.float64, np.float64, np.float64, np.float64, str, str))
 
 # comp_gals = ascii.read("comp_gals.csv")
 
@@ -32,7 +32,6 @@ for gal in gals:
         '(I-H)':None,
         'backgrVIS': None, 'backgrH': None,
         'smaVIS': None, 'smaH': None,
-        'mzpVIS': None, 'mzpH': None,
         'commentVIS': '-', 'commentH': '-'
     }
     for filter in ['VIS','H']:
@@ -40,7 +39,7 @@ for gal in gals:
             # compute the psf
             field_path = '{}/{}/{}/psf/field.fits'.format(output_folder,gal,filter)
             return_path = '{}/{}/{}/psf'.format(output_folder,gal,filter)
-            extractPSF(field_path, return_path, filter, image_type='stacked')
+            extractPSF(field_path, return_path, filter)
 
             # compute the sbf
             psf_path = '{}/{}/{}/psf/stars.psf'.format(output_folder,gal,filter)
@@ -58,8 +57,6 @@ for gal in gals:
             row[f'sbfmag{filter}'] = sbfmag
             row[f'backgr{filter}'] = total_bckgr
             row[f'sma{filter}']    = sma
-            row[f'sma{filter}']    = sma
-            row[f'mzp{filter}']    = mzp
 
         except Exception as e:
             # If something goes wrong, keep None and print what failed
@@ -75,16 +72,14 @@ for gal in gals:
         mask = np.loadtxt(pathVIS + '/color_final_mask')
         dataVIS = np.loadtxt(pathVIS + '/data_background_subtracted')
         dataH = np.loadtxt(pathH + '/data_background_subtracted')
-        dataH = np.flip(dataH, axis=0)
+#         dataH = np.flip(dataH, axis=0)
 
-#         mzpVIS = comp_gals['mzpVIS'][comp_gals['OBJECT_ID']==gal][0] 
-        mzpVIS = row['mzpVIS']
-#         mzpH = comp_gals['mzpH'][comp_gals['OBJECT_ID']==gal][0]  
-        mzpH = row['mzpH']
-        print(mzpVIS,mzpH)
+        mzpVIS = np.loadtxt(pathVIS + '/background')[2]
+        mzpH =  np.loadtxt(pathH + '/background')[2]
+        print('mzp:',mzpVIS,mzpH)
+
         color,dataBmasked,dataRmasked = computeColor(dataVIS, dataH, mask, mzpVIS, mzpH, do_print=True)
         row['(I-H)'] = color
-#         comp_gals['(I-H)'][comp_gals['OBJECT_ID']==gal] = color
         for filter,datamasked in zip(['VIS','H'],[dataBmasked,dataRmasked]):
             fig, ax = plt.subplots(figsize=(8, 8))
             imdisplay(datamasked, ax, percentlow=1, percenthigh=99, scale='asinh')
@@ -105,8 +100,7 @@ for gal in gals:
         row['(I-H)'],
         row['backgrVIS'], row['backgrH'],
         row['smaVIS'], row['smaH'],
-        row['mzpVIS'], row['mzpH'],
         row['commentVIS'], row['commentH']
     ])
 
-comp_gals.write("comp_gals_sota_v6.csv", format="csv", overwrite=True)
+comp_gals.write("comp_gals_Fornax_sota_v6.csv", format="csv", overwrite=True)
