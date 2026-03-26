@@ -136,7 +136,7 @@ def maskBadPixelsAstroscrappy(data_frame, effective_gain=3.1, readnoise=4.5, fil
 #############################################################################
 
     
-def extractData(data_path, file_path=None, image_path=None, filter="VIS", cosmic_ray_method='astroscrappy',make_plots=True, plot_plots=True):
+def extractData(data_path, file_path=None, image_path=None, fits_path=None, filter="VIS", cosmic_ray_method='astroscrappy',make_plots=True, plot_plots=True):
     """
     New version of extractData function
     """
@@ -150,6 +150,12 @@ def extractData(data_path, file_path=None, image_path=None, filter="VIS", cosmic
     if image_path != None:
         try:
             os.makedirs(image_path)
+        except FileExistsError:
+            pass
+
+    if fits_path != None:
+        try:
+            os.makedirs(fits_path)
         except FileExistsError:
             pass
     data, wcs, mzp = openFits(data_path)

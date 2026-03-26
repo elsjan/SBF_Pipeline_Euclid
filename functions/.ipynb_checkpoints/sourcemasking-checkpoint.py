@@ -1,3 +1,4 @@
+
 import numpy as np
 import sep
 import matplotlib.pyplot as plt
@@ -282,12 +283,14 @@ def centralAnnulusMask(img_model, geometry=None, inner_radius=50, inner_percenta
         inner_radius = geometry.sma*inner_percentage
     mask = maskCircle(img_model, geometry.x0, geometry.y0, rout=inner_radius, rin=0)
     return mask
-    
+
+
 ##############################################################################################
 # MAIN functions
 ##############################################################################################
 
-def maskBackgroundSources(data, mask_cr=None, make_plots=False, plot_plots=False, detect_thresh=3, minarea=7, maxarea=None, r=2.5, image_path=None, final=False, original_image=None):
+def maskBackgroundSources(data, mask_cr=None, make_plots=False, plot_plots=False, detect_thresh=3, minarea=7, maxarea=None, r=2.5, image_path=None, 
+                          final=False, geometry=None):
     """
     Detect and mask background sources using SEP (SExtractor).
     Works with masked arrays or normal numpy arrays.
@@ -307,6 +310,12 @@ def maskBackgroundSources(data, mask_cr=None, make_plots=False, plot_plots=False
     if maxarea != None:
         objects, segmap = unmaskMaxArea(objects, segmap, maxarea)
 
+    if geometry != None:
+        for x,y,i in zip(objects['x'], objects['y'], range(len(objects['x']))):
+            if (np.abs(x - geometry.x0) <= 3) & (np.abs(y - geometry.y0) <= 3):
+                objects = np.delete(objects, i, axis=0)
+                print('Removed source at center galaxy, at:', x, y)
+  
     # Mask them
     mask_sources = np.zeros(data.shape, dtype=bool)
     sep.mask_ellipse(mask_sources, objects['x'], objects['y'],
@@ -329,15 +338,61 @@ def maskBackgroundSources(data, mask_cr=None, make_plots=False, plot_plots=False
     
     return mask_combined
 
-def createRequiredVariables(data, model_final, source_mask_final, psf, total_background, geometry, make_plots=False, plot_plots=False, image_path=None):
+def maskBackgroundSourcesWeighted(data, model=None,mask_cr=None, make_plots=False, plot_plots=False, detect_thresh=3, minarea=7, maxarea=None, r=2.5, image_path=None, 
+                                  final=False, geometry=None):
+    """
+    Detect and mask background sources using SEP (SExtractor).
+    Works with masked arrays or normal numpy arrays.
+    """
+
+    model = np.where(model<=1, 1, model)
+    # Estimate background
+    bkg = sep.Background(data.astype(np.float64), mask=mask_cr, bw=64, bh=64, fw=3, fh=3)
+    try:
+    # Detect sources
+        objects, segmap = sep.extract(data.astype(np.float64), thresh=detect_thresh * bkg.globalrms, err=model,var=model.astype(np.float64),
+                              mask=mask_cr, minarea=minarea, segmentation_map=True)
+    except:
+        # Sometimes the galaxy is still too bright, extra background removal can help and sizing up the minarea
+        objects, segmap = sep.extract(data.astype(np.float64)-bkg.back(), thresh=detect_thresh * bkg.globalrms,var=model.astype(np.float64),
+                              mask=mask_cr, minarea=minarea*2, segmentation_map=True)
+        
+    if maxarea != None:
+        objects, segmap = unmaskMaxArea(objects, segmap, maxarea)
+        
+    if geometry != None:
+        for x,y,i in zip(objects['x'], objects['y'], range(len(objects['x']))):
+            if (np.abs(x - geometry.x0) <= 3) & (np.abs(y - geometry.y0) <= 3):
+                objects = np.delete(objects, i, axis=0)
+                print('Removed source at center galaxy, at:', x, y)
+    # Mask them
+    mask_sources = np.zeros(data.shape, dtype=bool)
+    sep.mask_ellipse(mask_sources, objects['x'], objects['y'],
+                     objects['a'], objects['b'], objects['theta'], r=r)
+
+    # Combine
+    mask_combined = mask_sources | mask_cr
+
+    if make_plots:
+        fig, ax = plt.subplots(figsize=(8, 8))
+        imdisplay(data, ax, percentlow=1, percenthigh=99, scale='asinh')
+        plt.title("Detected Sources Mask")
+        plt.imshow(mask_combined, origin='lower', cmap='Reds', alpha=0.5)
+        if image_path != None:
+            image_title = "6.1_source_mask.png"
+            plt.savefig(image_path + "/" + image_title)
+        if plot_plots:
+            plt.show()
+
+    
+    return mask_combined
+
+def createRequiredVariables(data, model_final, source_mask_final, total_background, geometry, SN=None,make_plots=False, plot_plots=False, image_path=None,
+                            mask_inner_radius=None, mask_outer_radius=None):
     """
     From the data and the model, the nri, model mask, and total mask is returned.
     Now a convolution of the psf and the galaxy model is made, as for the method of Beltrán
     """
-
-    sized_psf = sizePsf(psf, model_final)
-    model_final = convolve(model_final, sized_psf, mode="same")/np.sum(sized_psf)
-
     
     # geometry.sma *= 3
     aperture = EllipticalAperture((geometry.x0, geometry.y0), geometry.sma, geometry.sma*(1-geometry.eps), geometry.pa)
@@ -345,13 +400,18 @@ def createRequiredVariables(data, model_final, source_mask_final, psf, total_bac
     aperture_mask = aperture_mask_obj.to_image(data.shape).astype(bool)
 
     inner_radius = geometry.sma*0.15
-
+    if mask_inner_radius != None:
+        inner_radius = mask_inner_radius
     mask_center = maskCircle(data, geometry.x0, geometry.y0, rout=inner_radius, rin=0)
 
     # old version
     # mask_model = model_final <= 1.5 #* total_background   #ballsy change
     # mask_combined = np.array(~(mask_model | source_mask_final), dtype=int)
-    
+    if SN != None:
+        aperture_mask = model_final > (SN-1)*total_background
+    if mask_outer_radius != None:
+        mask_outer = maskCircle(data, geometry.x0, geometry.y0, rout=mask_outer_radius, rin=0)
+        aperture_mask = mask_outer
     # mask for color computation, center included
     mask_model = ~source_mask_final
     mask_model &= aperture_mask

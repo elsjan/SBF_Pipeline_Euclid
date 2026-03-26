@@ -7,6 +7,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 import sys
+import sep
+from scipy.signal import convolve
 
 # photutils functions: required to perform the ellipse analysis
 from photutils.isophote import Ellipse, EllipseGeometry, build_ellipse_model, EllipseSample, EllipseFitter
@@ -22,6 +24,7 @@ from time import time
 # Own functions
 from plotting import imdisplay
 from sourcemasking import centralAnnulusMask
+from fourierfunctions import sizePsf
 
 
 # -----------------------------------------------------------------------------------------
@@ -182,28 +185,31 @@ def fitFinalEllipseModel(data, source_mask, center_sources, mask_cr=None):
 # Other version used in pipeline
 ################################################################
 
-def MainFitEllipseModel(data, mask_cr=None, geometry=None, make_plots=False, plot_plots=False, sma_normfactor=1, sma_rescale=1, final=False, image_path=None, method='v1'):
+def MainFitEllipseModel(data, mask_cr=None, geometry=None, make_plots=False, plot_plots=False, sma_normfactor=1, sma_rescale=1, final=False, image_path=None, method='v6', zoom=True):
     """
     New version of fitInitialEllipseModel function
     """
     plt.close("all")
-    if final==False:
-        nclip_sm = 2
-        title_str = "Initial Ellipse Fit"
-    elif final==True:
-        nclip_sm = 0
-        title_str = "Final Ellipse Fit"
-
+    print('zooma', zoom)
     masked_data = np.ma.masked_array(data, mask_cr)
     nonandata = masked_data.filled(np.nanmedian(data))# np.where(np.isnan(data), np.nanmedian(data), data)
     if geometry == None:
-        f = find_galaxy(nonandata, quiet=True)
+        if zoom:
+            h = len(nonandata)//2
+            s = h//2
+            zoomdata = nonandata[h-s:h+s,h-s:h+s].copy()
+            f = find_galaxy(zoomdata, quiet=True)
+        else:
+            f = find_galaxy(nonandata, quiet=True)
         if f.pa < 90:
             geometry = EllipseGeometry(x0=f.ypeak, y0=f.xpeak
             , sma=f.majoraxis/sma_normfactor, eps=f.eps, pa=(f.pa+90)*np.pi/180, astep=0.1)
         else:
             geometry = EllipseGeometry(x0=f.ypeak, y0=f.xpeak
             , sma=f.majoraxis/sma_normfactor, eps=f.eps, pa=(f.pa-90)*np.pi/180, astep=0.1)
+        if zoom:
+            geometry.x0 += s 
+            geometry.y0 += s
 
 
     # Check if central pixel is masked
@@ -211,154 +217,16 @@ def MainFitEllipseModel(data, mask_cr=None, geometry=None, make_plots=False, plo
     if masked_data.mask[y0, x0]:
         print("Center pixel is masked - unmasking central area.")
         masked_data.mask = ~(~masked_data.mask | centralAnnulusMask(nonandata, geometry=geometry, inner_radius=10))
-    if method == 'v1':
-        ellipse = Ellipse(masked_data, geometry)
-        aperture = EllipticalAperture((geometry.x0, geometry.y0), geometry.sma, geometry.sma*(1-geometry.eps), geometry.pa)
-        if make_plots:
-            fig, ax = plt.subplots(figsize=(8, 8))
-            imdisplay(masked_data, ax, percentlow=1, percenthigh=99, scale='asinh')
-            aperture.plot(color='red', lw=1.5)
-            ax.plot(geometry.x0, geometry.y0, 'rx', markersize=7)
-            plt.title(title_str) 
-            if plot_plots:
-                plt.show()
-    
 
-        while nclip_sm <= 3:
-            isolist = ellipse.fit_image(nclip=nclip_sm, fflag=0.35, maxgerr=0.4, step=0.3, fix_pa=True, fix_center=True)
-            if len(isolist)!=0:
-                break
-            else: 
-                nclip_sm += 1
-
-        if len(isolist) == 0:
-            # print("Trying larger step size for ellipse fitting...")
-            print("Trying larger fflag for ellipse fitting")
-            isolist = ellipse.fit_image(nclip=2, fix_center=True, fix_pa=True
-                                , fflag=0.5, step=0.3, maxgerr=0.4)
-        if len(isolist) == 0:
-            print("Trying different center for initial condiions")
-            geometry.x0 = len(data[:,0])//2
-            geometry.y0 = len(data[0,:])//2
-            # Check if central pixel is masked
-            x0, y0 = int(geometry.x0), int(geometry.y0)
-            if masked_data.mask[y0, x0]:
-                print("Center pixel is masked - unmasking central area.")
-                masked_data.mask = ~(~masked_data.mask | centralAnnulusMask(nonandata, geometry=geometry, inner_radius=10))
-            ellipse = Ellipse(masked_data, geometry)
-            aperture = EllipticalAperture((geometry.x0, geometry.y0), geometry.sma, geometry.sma*(1-geometry.eps), geometry.pa)
-            if make_plots:
-                fig, ax = plt.subplots(figsize=(8, 8))
-                imdisplay(masked_data, ax, percentlow=1, percenthigh=99, scale='asinh')
-                aperture.plot(color='red', lw=1.5)
-                ax.plot(geometry.x0, geometry.y0, 'rx', markersize=7)
-                plt.title(title_str) 
-                if plot_plots:
-                    plt.show()
-            nclip_sm = 0 
-            while nclip_sm <= 3:
-                isolist = ellipse.fit_image(nclip=nclip_sm, fflag=0.35, maxgerr=0.4, step=0.3, fix_pa=True, fix_center=True)
-                if len(isolist)!=0:
-                    break
-                else: 
-                    nclip_sm += 1
-
-
-        if len(isolist) == 0:
-            print("Ellipse fitting failed")
-            return 
-
-    elif method == 'v2':
-        sample = EllipseSample(masked_data, geometry.sma, astep=0.1, sclip=3.0, nclip=0, linear_growth=False, integrmode='bilinear', geometry=geometry)
-        fitter = EllipseFitter(sample)
-        isolist = fitter.fit()
-
-    elif method == 'v3':
-        ellipse = Ellipse(masked_data, geometry)
-        aperture = EllipticalAperture((geometry.x0, geometry.y0), geometry.sma, geometry.sma*(1-geometry.eps), geometry.pa)
-        if make_plots:
-            fig, ax = plt.subplots(figsize=(8, 8))
-            imdisplay(masked_data, ax, percentlow=1, percenthigh=99, scale='asinh')
-            aperture.plot(color='red', lw=1.5)
-            ax.plot(geometry.x0, geometry.y0, 'rx', markersize=7)
-            plt.title(title_str) 
-            if plot_plots:
-                plt.show()
-    
-
-        while nclip_sm <= 3:
-            isolist = ellipse.fit_image(nclip=nclip_sm, fflag=0.6, step=0.2, fix_pa=True, fix_center=True)
-            if len(isolist)!=0:
-                break
-            else: 
-                nclip_sm += 1
-
-        if len(isolist) == 0:
-            print("Trying larger step size for ellipse fitting...")
-            isolist = ellipse.fit_image(nclip=2, fix_center=True, fix_pa=True, fix_eps=True
-                                , fflag=0.5, step=0.3, maxgerr=0.6)
-
-        if len(isolist) == 0:
-            print("Ellipse fitting failed")
-            return 
-        
-    elif method == 'v4':
-        ellipse = Ellipse(masked_data, geometry)
-        aperture = EllipticalAperture((geometry.x0, geometry.y0), geometry.sma, geometry.sma*(1-geometry.eps), geometry.pa)
-        if make_plots:
-            fig, ax = plt.subplots(figsize=(8, 8))
-            imdisplay(masked_data, ax,percentlow=1, percenthigh=99, scale='asinh')
-            aperture.plot(color='red', lw=1.5)
-            ax.plot(geometry.x0, geometry.y0, 'rx', markersize=7)
-            plt.title(title_str) 
-            if plot_plots:
-                plt.show()
-    
-
-        # while nclip_sm <= 3:
-        isolist = ellipse.fit_image(nclip=0, fflag=0.6, step=0.2, fix_center=True, fix_pa=True, inside_non_fixed=True)
-            # if len(isolist)!=0:
-            #     break
-            # else: 
-            #     nclip_sm += 1
-
-        if len(isolist) == 0:
-            print("Trying larger step size for ellipse fitting...")
-            isolist = ellipse.fit_image(nclip=2, fflag=0.5, step=0.3, maxgerr=0.6, fix_center=True, fix_pa=True, inside_non_fixed=True)
-
-        if len(isolist) == 0:
-            print("Ellipse fitting failed")
-            return 
-
-    elif method == 'v5':
-        ellipse = Ellipse(masked_data, geometry)
-        aperture = EllipticalAperture((geometry.x0, geometry.y0), geometry.sma, geometry.sma*(1-geometry.eps), geometry.pa)
-        if make_plots:
-            fig, ax = plt.subplots(figsize=(8, 8))
-            imdisplay(masked_data, ax, percentlow=1, percenthigh=99, scale='asinh')
-            aperture.plot(color='red', lw=1.5)
-            ax.plot(geometry.x0, geometry.y0, 'rx', markersize=7)
-            plt.title(title_str) 
-            if plot_plots:
-                plt.show()
-    
-
-        # while nclip_sm <= 3:
-        isolist = ellipse.fit_image(nclip=0, fflag=0.6, step=0.2, fix_center=True, fix_pa=True)
-            # if len(isolist)!=0:
-            #     break
-            # else: 
-            #     nclip_sm += 1
-
-        if len(isolist) == 0:
-            print("Trying larger step size for ellipse fitting...")
-            isolist = ellipse.fit_image(nclip=2, fflag=0.5, step=0.3, maxgerr=0.6, fix_center=True, fix_pa=True)
-
-        if len(isolist) == 0:
-            print("Ellipse fitting failed")
-            return 
-
-    elif method == 'v6':
+    if method == 'v6':
+        if final==False:
+            nclip_sm = 2
+            title_str = "Initial"
+            nmr_str = '3'
+        elif final==True:
+            nclip_sm = 0
+            title_str = "Final"
+            nmr_str = '5'
         geometry.sma *= sma_rescale 
         ellipse = Ellipse(masked_data, geometry)
         geometry.sma /= sma_rescale 
@@ -368,7 +236,7 @@ def MainFitEllipseModel(data, mask_cr=None, geometry=None, make_plots=False, plo
             imdisplay(masked_data, ax, percentlow=1, percenthigh=99, scale='asinh')
             aperture.plot(color='red', lw=1.5)
             ax.plot(geometry.x0, geometry.y0, 'rx', markersize=7)
-            plt.title(title_str) 
+            plt.title(f'{title_str} Ellipse Fit') 
             if plot_plots:
                 plt.show()
     
@@ -408,12 +276,87 @@ def MainFitEllipseModel(data, mask_cr=None, geometry=None, make_plots=False, plo
                 imdisplay(masked_data, ax, percentlow=1, percenthigh=99, scale='asinh')
                 aperture.plot(color='red', lw=1.5)
                 ax.plot(geometry.x0, geometry.y0, 'rx', markersize=7)
-                plt.title(title_str) 
+                plt.title(f'{title_str} Ellipse Fit') 
                 if plot_plots:
                     plt.show()
             nclip = nclip_sm
             while nclip <= 3:
                 isolist = ellipse.fit_image(nclip=nclip, fflag=0.6, step=0.2, fix_center=True, fix_pa=True, inside_non_fixed=True)
+                if len(isolist)!=0:
+                    break
+                else: 
+                    nclip += 1
+                    
+        if len(isolist) == 0:
+            print("Ellipse fitting failed")
+            return 
+
+    if method == 'v7':
+        if final==False:
+            nclip_sm = 4
+            step_size = 0.2
+            title_str = "Initial"
+            nmr_str = '3'
+        elif final==True:
+            nclip_sm = 2
+            step_size = 0.1
+            title_str = "Final"
+            nmr_str = '5'
+        geometry.sma *= sma_rescale 
+        ellipse = Ellipse(masked_data, geometry)
+        geometry.sma /= sma_rescale 
+        aperture = EllipticalAperture((geometry.x0, geometry.y0), geometry.sma, geometry.sma*(1-geometry.eps), geometry.pa)
+        if make_plots:
+            fig, ax = plt.subplots(figsize=(8, 8))
+            imdisplay(masked_data, ax, percentlow=1, percenthigh=99, scale='asinh')
+            aperture.plot(color='red', lw=1.5)
+            ax.plot(geometry.x0, geometry.y0, 'rx', markersize=7)
+            plt.title(f'{title_str} Ellipse Fit') 
+            if plot_plots:
+                plt.show()
+    
+        nclip = nclip_sm
+        while nclip <= 5:
+            isolist = ellipse.fit_image(nclip=nclip, fflag=0.6, step=step_size, fix_center=True, fix_pa=True, inside_non_fixed=True)
+            if len(isolist)!=0:
+                break
+            else: 
+                nclip += 1
+
+        if len(isolist) == 0:
+            print("Trying larger step size for ellipse fitting...")
+            nclip = nclip_sm
+            while nclip <= 5:
+                isolist = ellipse.fit_image(nclip=nclip, fflag=0.5, step=step_size+0.2, maxgerr=0.6, fix_center=True, fix_pa=True, inside_non_fixed=True)
+                if len(isolist)!=0:
+                    break
+                else: 
+                    nclip += 1
+                    
+        if len(isolist) == 0:
+            print("Trying different center for initial condiions")
+            geometry.x0 = len(data[:,0])//2
+            geometry.y0 = len(data[0,:])//2
+            # Check if central pixel is masked
+            x0, y0 = int(geometry.x0), int(geometry.y0)
+            if masked_data.mask[y0, x0]:
+                print("Center pixel is masked - unmasking central area.")
+                masked_data.mask = ~(~masked_data.mask | centralAnnulusMask(nonandata, geometry=geometry, inner_radius=10))
+            geometry.sma *= sma_rescale 
+            ellipse = Ellipse(masked_data, geometry)
+            geometry.sma /= sma_rescale 
+            aperture = EllipticalAperture((geometry.x0, geometry.y0), geometry.sma, geometry.sma*(1-geometry.eps), geometry.pa)
+            if make_plots:
+                fig, ax = plt.subplots(figsize=(8, 8))
+                imdisplay(masked_data, ax, percentlow=1, percenthigh=99, scale='asinh')
+                aperture.plot(color='red', lw=1.5)
+                ax.plot(geometry.x0, geometry.y0, 'rx', markersize=7)
+                plt.title(f'{title_str} Ellipse Fit') 
+                if plot_plots:
+                    plt.show()
+            nclip = nclip_sm
+            while nclip <= 5:
+                isolist = ellipse.fit_image(nclip=nclip, fflag=0.6, step=step_size, fix_center=True, fix_pa=True, inside_non_fixed=True)
                 if len(isolist)!=0:
                     break
                 else: 
@@ -434,23 +377,23 @@ def MainFitEllipseModel(data, mask_cr=None, geometry=None, make_plots=False, plo
     if make_plots:
         fig, ax = plt.subplots(figsize=(8, 8))
         ax.imshow(model_basic, origin='lower', cmap='gray', norm='asinh')
-        plt.title(f"{title_str} Isophote Model")
+        plt.title(f"{title_str} Ellipse Fit Isophote Model")
         if image_path != None:
-            image_title = f"5.1_isophote_model_fit.png"
+            image_title = f"{nmr_str}.1_{title_str}_isophote_model_fit.png"
             plt.savefig(image_path + "/" + image_title)   
         if plot_plots:
             plt.show()
 
         fig, ax = plt.subplots(figsize=(8, 8))
-        imdisplay(residual_basic, ax, percentlow=1, percenthigh=99, scale='asinh')
-        plt.title(f"{title_str} Residuals")
+        imdisplay(np.ma.masked_array(residual_basic, mask_cr), ax, percentlow=1, percenthigh=99, scale='asinh')
+        plt.title(f"{title_str} Ellipse Fit Residuals")
         if image_path != None:
-            image_title = "5.2_isophote_model_residuals.png"
+            image_title = f"{nmr_str}.2_{title_str}_isophote_model_residuals.png"
             plt.savefig(image_path + "/" + image_title)   
         if plot_plots:
             plt.show()
         plt.close()
-    return residual_basic, model_basic, geometry
+    return residual_basic, model_basic, geometry, isolist
 
 def sigma_clip(data, sigma=3, maxiters=5):
     data = np.asarray(data)
@@ -582,17 +525,25 @@ def build_elliptical_model_with_subpixels(
 
     return model, intensities
 
-def fitApertureModel(data, mask_cr=None, make_plots=False, plot_plots=False, geometry=None, sma_normfactor=1, final=False, image_path=None, sclipmaxiters=5):
+def fitApertureModel(data, mask_cr=None, make_plots=False, plot_plots=False, geometry=None, sma_normfactor=1, final=False, image_path=None, sclipmaxiters=5, zoom=True):
     # Use with caution
     if final==False:
-        title_str = "Initial Ellipse Fit"
+        title_str = "Initial"
+        nmr_str = '3'
     elif final==True:
-        title_str = "Final Ellipse Fit"
+        title_str = "Final"
+        nmr_str = '5'
     masked_data = np.ma.masked_array(data, mask_cr)
     nonandata = masked_data.filled(np.nanmedian(data))#np.where(np.isnan(data), np.nanmedian(data), data)
-    
+    print('zooom', zoom)
     if geometry == None:
-        f = find_galaxy(nonandata, quiet=True)#, nblob=2)#, level=25)
+        if zoom:
+            h = len(nonandata)//2
+            s = h//2
+            zoomdata = nonandata[h-s:h+s,h-s:h+s].copy()
+            f = find_galaxy(zoomdata, quiet=True)
+        else:
+            f = find_galaxy(nonandata, quiet=True)
         if f.pa < 90:
             geometry = EllipseGeometry(x0=f.ypeak, y0=f.xpeak, 
                                    sma=f.majoraxis/sma_normfactor, eps=f.eps, 
@@ -601,6 +552,9 @@ def fitApertureModel(data, mask_cr=None, make_plots=False, plot_plots=False, geo
             geometry = EllipseGeometry(x0=f.ypeak, y0=f.xpeak, 
                                    sma=f.majoraxis/sma_normfactor, eps=f.eps, 
                                    pa=(f.pa-90)*np.pi/180, astep=0.1)
+        if zoom:
+            geometry.x0 += s 
+            geometry.y0 += s
         
     
     
@@ -610,7 +564,7 @@ def fitApertureModel(data, mask_cr=None, make_plots=False, plot_plots=False, geo
         imdisplay(masked_data, ax, percentlow=1, percenthigh=99, scale='asinh')
         aperture.plot(color='red', lw=1.5)
         ax.plot(geometry.x0, geometry.y0, 'rx', markersize=7)
-        plt.title(title_str) 
+        plt.title(f'{title_str} Ellipse Fit') 
         if plot_plots:
             plt.show()
     
@@ -638,24 +592,82 @@ def fitApertureModel(data, mask_cr=None, make_plots=False, plot_plots=False, geo
         fig, ax = plt.subplots(figsize=(8, 8))
         ax.imshow(model_basic, origin='lower', cmap='gray', norm='asinh')
         # imdisplay(model_basic, ax, percentlow=1, percenthigh=99, scale='asinh')
-        plt.title(f"{title_str} Isophote Model")
+        plt.title(f"{title_str} Ellipse Fit Isophote Model")
         if image_path != None:
-            image_title = f"5.1_isophote_model_fit.png"
+            image_title = f"{nmr_str}.1_{title_str}_isophote_model_fit.png"
             plt.savefig(image_path + "/" + image_title)   
         if plot_plots:
             plt.show()
 
         fig, ax = plt.subplots(figsize=(8, 8))
-        imdisplay(residual_basic, ax, percentlow=1, percenthigh=99, scale='asinh')
-        plt.title(f"{title_str} Residuals")
+        imdisplay(np.ma.masked_array(residual_basic, mask_cr), ax, percentlow=1, percenthigh=99, scale='asinh')
+        plt.title(f"{title_str} Ellipse Fit Residuals")
         if image_path != None:
-            image_title = "5.2_isophote_model_residuals.png"
+            image_title = f"{nmr_str}.2_{title_str}_isophote_model_residuals.png"
             plt.savefig(image_path + "/" + image_title)   
         if plot_plots:
             plt.show()
         plt.close()
     return residual_basic, model_basic, geometry
 
+
+
+def modelBackgroundSubtraction(data, model, mask=None, image_path=None, make_plots=True, plot_plots=True, final=False, bwh=25):
+    if final==False:
+        title_str = "Initial"
+    elif final==True:
+        title_str = "Final"
+    residual = data - model
+    backgr = sep.Background(residual.astype(np.float32), mask=mask, bw=bwh, bh=bwh, fw=3, fh=3)
+    background = backgr.back()
+    model_corrected = model + background
+    residual_corrected = data - model_corrected
+
+    if make_plots:
+        fig, ax = plt.subplots(figsize=(8, 8))
+        imdisplay(background, ax, percentlow=1, percenthigh=99, scale='asinh')
+        plt.title(f"{title_str} Background Model Correction")
+        if image_path != None:
+            image_title = f"5.3_{title_str}_background_model_correction.png"
+            plt.savefig(image_path + "/" + image_title)
+        if plot_plots:
+            plt.show()
+            
+        fig, ax = plt.subplots(figsize=(8, 8))
+        imdisplay(model_corrected, ax, percentlow=1, percenthigh=99, scale='asinh')
+        plt.title(f"{title_str} Background Corrected Model")
+        if image_path != None:
+            image_title = f"5.4_{title_str}_background_corrected_model.png"
+            plt.savefig(image_path + "/" + image_title)
+        if plot_plots:
+            plt.show()
+        
+        fig, ax = plt.subplots(figsize=(8, 8))
+        imdisplay(np.ma.masked_array(residual_corrected,mask=mask), ax, percentlow=1, percenthigh=99, scale='asinh')
+        plt.title(f"{title_str} Background Corrected Model Residual Image")
+        if image_path != None:
+            image_title = f"5.5_{title_str}_background_corrected_model_residual.png"
+            plt.savefig(image_path + "/" + image_title)
+        if plot_plots:
+            plt.show()
+
+        return model_corrected
+
+
+def modelSmoothGaus(model):
+    Gaus = lambda x, mu, sigma: np.exp(-((mu-x)**2)/(2*(sigma**2)))
+    s = 25
+    h = (s-1)//2
+    small_gaus = np.zeros((s,s))
+    for i in range(s):
+        for j in range(s):
+            r = np.sqrt(((i-h)**2)+((j-h)**2))
+            val = Gaus(r,0,5)
+            small_gaus[i,j] = val
+    small_gaus /= np.sum(small_gaus)
+    sized_gaus = sizePsf(small_gaus, model)
+    model_conv = convolve(model, sized_gaus, mode='same') / np.sum(sized_gaus)
+    return model_conv
 
 # -----------------------------------------------------------------------------------------
 

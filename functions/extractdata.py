@@ -136,7 +136,7 @@ def maskBadPixelsAstroscrappy(data_frame, effective_gain=3.1, readnoise=4.5, fil
 #############################################################################
 
     
-def extractData(data_path, file_path=None, image_path=None, filter="VIS", cosmic_ray_method='astroscrappy',make_plots=True, plot_plots=True):
+def extractData(data_path, file_path=None, image_path=None, fits_path=None, field_path = None, filter="VIS", cosmic_ray_method='astroscrappy',make_plots=True, plot_plots=True):
     """
     New version of extractData function
     """
@@ -152,6 +152,12 @@ def extractData(data_path, file_path=None, image_path=None, filter="VIS", cosmic
             os.makedirs(image_path)
         except FileExistsError:
             pass
+
+    if fits_path != None:
+        try:
+            os.makedirs(fits_path)
+        except FileExistsError:
+            pass
     data, wcs, mzp = openFits(data_path)
     mask_nan = np.isfinite(data)
     if cosmic_ray_method == 'astroscrappy':
@@ -160,6 +166,33 @@ def extractData(data_path, file_path=None, image_path=None, filter="VIS", cosmic
         mask_cr = maskBadPixelsLacosmic(data, filter=filter)
     mask_cr = mask_cr | ~mask_nan
     
+    # ugly temporary solution of mask extension for this specific galaxy
+    if 'FCC133' in data_path:
+        if filter=='VIS':
+            print("FCC133 VIS band extra mask used")
+            a = len(mask_cr)//4
+            mask_extra = np.zeros((len(mask_cr),len(mask_cr)))
+            for i in range(len(mask_cr)):
+                for j in range(len(mask_cr)):
+                    val1 = (i-a)*(1/0.18)+262+a
+                    val2 = (i-a)*(-0.18)+440+a
+                    if (j < val1) & (j > val2):
+                        mask_extra[j,i] = 1
+
+            mask_extra2 = data < 0
+            mask_cr = mask_cr | mask_extra.astype(bool)
+            mask_cr = mask_cr | mask_extra2.astype(bool)
+            if make_plots:
+                fig, ax = plt.subplots(figsize=(8, 8))
+                imdisplay(np.ma.masked_array(data, mask_cr), ax, percentlow=1, percenthigh=99, scale='asinh')
+                plt.title("Raw data")
+                image_title = "1.1_raw_data_masked.png"
+                if image_path != None:
+                    plt.savefig(image_path + "/" + image_title)
+                if plot_plots:
+                    plt.show()
+                plt.close()
+
     if make_plots:
         fig, ax = plt.subplots(figsize=(8, 8))
         imdisplay(data, ax, percentlow=1, percenthigh=99, scale='asinh')

@@ -106,7 +106,7 @@ def psfAndMaskPowerSpectrum(mask, psf):
     # We need to normalise one of the two to the psf per pixel.
     psf_ps_2d = fourier2dPowerSpectrum(psf_sized)
     
-    convolution_ps = (convolve(mask_ps_2d, psf_ps_2d, mode="same")/mask.shape[0]**2) 
+    convolution_ps = (convolve(mask_ps_2d, psf_ps_2d, mode="same")/(mask.shape[0]**2))
     
     power_spectrum_1d = powerSpectrum2dTo1d(convolution_ps)
     
@@ -162,7 +162,23 @@ def findExpectedPS(psf_frames, mask, norm_factor):
         expected_psf_list = []
         for psf in psf_frames:
             expected_psf_list.append(psfAndMaskPowerSpectrum(mask, psf)/norm_factor)
-        expected_psf = np.mean(expected_psf_list, axis=0)
+        expected_psf = np.array(expected_psf_list)
+    return expected_psf
+
+def findExpectedPSold(psf_frames, mask, norm_factor):
+    """
+    Find the expected power spectrum, given either one psf frame or a list
+    of psf frames, of which the mean power spectrum is taken.
+    """
+    if len(psf_frames) == 0:
+        expected_psf = None
+    elif len(psf_frames.shape) == 2:
+        expected_psf = psfAndMaskPowerSpectrum(mask, psf_frames)/norm_factor
+    elif len(psf_frames.shape) == 3:
+        expected_psf_list = []
+        for psf in psf_frames:
+            expected_psf_list.append(psfAndMaskPowerSpectrum(mask, psf)/norm_factor)
+        expected_psf = np.median(expected_psf_list, axis=0)
     return expected_psf
      
     
@@ -186,7 +202,7 @@ def getSbfComponents(residual_fluctuations, mask, psf, norm_type):
 
 
 def fitSbfComponents(image_ps, expected_ps, kfit_i, kfit_f, make_plots=False,plot_plots=False, image_path=None,
-                     image_title=None):
+                     image_title=None, plotyrange=None):
     """
     Function that performs the fit of the SBF components, given the 
     total image power spectrum and the expected power spectrum
@@ -205,14 +221,14 @@ def fitSbfComponents(image_ps, expected_ps, kfit_i, kfit_f, make_plots=False,plo
     
     if make_plots==True:
         plotSbfAnalysis(image_ps, expected_ps, sbf, noise, kfit_i, kfit_f, 
-                        image_path=image_path, image_title=image_title, plot_plots=plot_plots)
+                        image_path=image_path, image_title=image_title, plot_plots=plot_plots, plotyrange=plotyrange)
         
     return sbf, noise
     
 
 def calculateSBF(residual_fluctuations, mask, psf,
-                 norm_type = None,
-                 fit_range_i=0.2, fit_range_f=0.6, make_plots=False,plot_plots=False, 
+                 norm_type = None, 
+                 fit_range_i=0.2, fit_range_f=0.6, make_plots=False,plot_plots=False, plotyrange=None,
                  image_path=None, image_title=None):
     """
     Function that calculates the Surface Brightness Fluctuation 
@@ -228,19 +244,118 @@ def calculateSBF(residual_fluctuations, mask, psf,
     (Only for display purposes in the plot, does not affect measured 
     sbf amplitude.)
     """
+    # print("DO NOT USE RN!")
     image_ps, expected_ps = getSbfComponents(residual_fluctuations, mask, 
                                              psf, norm_type)
     if np.any(expected_ps == None):
         print("No psf sources found, no SBF amplitude fit")
         return image_ps, [0], 0, 0
     
-    kfit_i = int(fit_range_i*len(image_ps))
-    kfit_f = int(fit_range_f*len(image_ps))
+    fit_range_i = np.array((fit_range_i))
+    fit_range_f = np.array((fit_range_f))
+    kfit_i = (fit_range_i*len(image_ps)).astype(int)
+    kfit_f = (fit_range_f*len(image_ps)).astype(int)
+
+    if (kfit_i.size == 1) and (kfit_f.size == 1):
+        if len(psf.shape) == 2:
+            sbf, noise = fitSbfComponents(image_ps, expected_ps, kfit_i, kfit_f, 
+                                        image_path=image_path, image_title=image_title, 
+                                        make_plots=make_plots,plot_plots=plot_plots, plotyrange=plotyrange)
+            std_sbf = None
+        elif len(psf.shape) == 3:
+            sbfs = []
+            noises = []
+            for i in range(len(expected_ps[:,0])):
+                sbfi, noisei = fitSbfComponents(image_ps, expected_ps[i,:], kfit_i, kfit_f, 
+                                image_path=None, image_title=image_title, 
+                                make_plots=False,plot_plots=False, plotyrange=plotyrange)
+                sbfs.append(sbfi)
+                noises.append(noisei)
+            sbfs = np.array(sbfs)
+            noises = np.array(noises)
+            med_sbf = np.median(sbfs)
+            std_sbf = np.std(sbfs)
+            idx = np.argmin(np.abs(sbfs - med_sbf))
+            # sbf = sbfs[idx]
+            # noise = noises[idx]
+            expected_ps = expected_ps[idx,:]
+            sbf, noise = fitSbfComponents(image_ps, expected_ps, kfit_i, kfit_f, 
+                                            image_path=image_path, image_title=image_title, 
+                                            make_plots=make_plots,plot_plots=plot_plots, plotyrange=plotyrange)
+        kfit_i_final = kfit_i
+        kfit_f_final = kfit_f
+
+    else:
+        
+        if kfit_i.size == 1:
+            kfit_i = [kfit_i]
+        if kfit_f.size == 1:
+            kfit_f = [kfit_f]
+        sbf_list = []
+        ifs = []
+        for kfit_i_iter in kfit_i:
+            for kfit_f_iter in kfit_f:
+                if len(psf.shape) == 2:
+                    sbf, noise = fitSbfComponents(image_ps, expected_ps, kfit_i, kfit_f, 
+                                                image_path=image_path, image_title=image_title, 
+                                                make_plots=make_plots,plot_plots=plot_plots, plotyrange=plotyrange)
+                    std_sbf = None
+                elif len(psf.shape) == 3:
+                    sbfs = []
+                    noises = []
+                    for i in range(len(expected_ps[:,0])):
+                        sbfi, noisei = fitSbfComponents(image_ps, expected_ps[i,:], kfit_i, kfit_f, 
+                                        image_path=None, image_title=image_title, 
+                                        make_plots=False,plot_plots=False, plotyrange=plotyrange)
+                        sbfs.append(sbfi)
+                    sbfs = np.array(sbfs)
+                    med_sbf = np.median(sbfs)
+                    std_sbf = np.std(sbfs)
+                    idx = np.argmin(np.abs(sbfs - med_sbf))
+                    # sbf = sbfs[idx]
+                    # noise = noises[idx]
+                    expected_ps = expected_ps[idx,:]
+                    sbf, noise = fitSbfComponents(image_ps, expected_ps, kfit_i, kfit_f, 
+                                                    image_path=False, image_title=image_title, 
+                                                    make_plots=False,plot_plots=False, plotyrange=plotyrange)
+                sbf_list.append(sbf)
+                ifs.append((kfit_i_iter, kfit_f_iter))
+
+        sbf_list = np.array(sbf_list)
+        med_sbf = np.median(sbf_list)
+        std_sbf_list = np.std(sbf_list)
+        idx = np.argmin(np.abs(sbf_list - med_sbf))
+        kfit_i_final = ifs[idx][0]
+        kfit_f_final = ifs[idx][1]
+
+        if len(psf.shape) == 2:
+            sbf, noise = fitSbfComponents(image_ps, expected_ps, kfit_i_final, kfit_f_final, 
+                                        image_path=image_path, image_title=image_title, 
+                                        make_plots=make_plots,plot_plots=plot_plots, plotyrange=plotyrange)
+            std_sbf = None
+        elif len(psf.shape) == 3:
+            sbfs = []
+            noises = []
+            for i in range(len(expected_ps[:,0])):
+                sbfi, noisei = fitSbfComponents(image_ps, expected_ps[i,:], kfit_i_final, kfit_f_final, 
+                                image_path=None, image_title=image_title, 
+                                make_plots=False,plot_plots=False, plotyrange=plotyrange)
+                sbfs.append(sbfi)
+            sbfs = np.array(sbfs)
+            med_sbf = np.median(sbfs)
+            std_sbf = np.std(sbfs)
+            idx = np.argmin(np.abs(sbfs - med_sbf))
+            # sbf = sbfs[idx]
+            # noise = noises[idx]
+            expected_ps = expected_ps[idx,:]
+            sbf, noise = fitSbfComponents(image_ps, expected_ps, kfit_i_final, kfit_f_final, 
+                                            image_path=image_path, image_title=image_title, 
+                                            make_plots=make_plots,plot_plots=plot_plots, plotyrange=plotyrange)
+
+
+        std_sbf = np.sqrt((std_sbf**2) + (std_sbf_list**2))
     
-    sbf, noise = fitSbfComponents(image_ps, expected_ps, kfit_i, kfit_f, 
-                                  image_path=image_path, image_title=image_title, make_plots=make_plots,plot_plots=plot_plots)
-    
-    return image_ps, expected_ps, sbf, noise 
+    return image_ps, expected_ps, sbf, noise, std_sbf, kfit_i_final//len(image_ps), kfit_f_final//len(image_ps)
 
 def appSBFmagnitude(sbf, mzp):
     m = -2.5 * np.log10(sbf) + mzp
@@ -253,7 +368,7 @@ def appSBFmagnitude(sbf, mzp):
 import matplotlib.pyplot as plt
 
 def plotSbfAnalysis(image_ps, expected_ps, sbf, noise, kfit_i, kfit_f,
-                    image_path=None, image_title=None, plot_plots=True):
+                    image_path=None, image_title=None, plot_plots=True, plotyrange=None):
     """
     Function that makes a plot of the fitted Fourier Power Spectrum SBF analysis
     """
@@ -275,6 +390,7 @@ def plotSbfAnalysis(image_ps, expected_ps, sbf, noise, kfit_i, kfit_f,
 
     frame.set_xlim(0, len(image_ps))
     frame.set_yscale("log")
+    frame.set_ylim(plotyrange)
     frame.legend(fontsize=15, loc=1)
     frame.grid()
     frame.tick_params(axis='both', labelsize=15)
@@ -283,7 +399,7 @@ def plotSbfAnalysis(image_ps, expected_ps, sbf, noise, kfit_i, kfit_f,
     
     if image_path != None:
         if image_title==None:
-            image_title = "9.1_power_spectrum_fit.png"
+            image_title = "8.1_power_spectrum_fit.png"
         plt.savefig(image_path + "/" + image_title)
     if plot_plots:
         plt.show()

@@ -24,6 +24,10 @@ from ellipsemodels import obtainEllipseInstance, obtainIsolistInstance
 
 # In order to make plots
 from matplotlib.pyplot import figure, show, savefig
+import matplotlib.pyplot as plt
+
+# Own functions imports
+from plotting import imdisplay
 
 
 # -----------------------------------------------------------------------------------------
@@ -260,9 +264,49 @@ def sexFieldBackgroundEstimation(data,field_path):
     hdu = fits.open(field_path)
     field_data = hdu[0].data
     hdu.close()
+    field_data = field_data.astype(np.float64)
     mask_inf = ~np.isfinite(field_data)
-    background = sep.Background(field_data.astype(np.float32), mask=mask_inf, bw=64, bh=64, fw=3, fh=3)
+    background = sep.Background(field_data, mask=mask_inf, bw=64, bh=64, fw=3, fh=3)
     total_bckgr = background.globalback
     data -= total_bckgr
-    return data, total_bckgr
+    rms_bckgr = background.globalrms
+    return data, field_data, total_bckgr, rms_bckgr
+
+def modelBackgroundSubtraction(data, model, mask=None, image_path=None, make_plots=True, plot_plots=True):
+    residual = data - model
+    backgr = sep.Background(residual.astype(np.float32), mask=mask, bw=64, bh=64, fw=3, fh=3)
+    background = backgr.back()
+    model_corrected = model + background
+    residual_corrected = data - model_corrected
+
+    if make_plots:
+        fig, ax = plt.subplots(figsize=(8, 8))
+        imdisplay(background, ax, percentlow=1, percenthigh=99, scale='asinh')
+        plt.title("Background model correction")
+        if image_path != None:
+            image_title = "5.2_background_model_correction.png"
+            plt.savefig(image_path + "/" + image_title)
+        if plot_plots:
+            plt.show()
+            
+        fig, ax = plt.subplots(figsize=(8, 8))
+        imdisplay(model_corrected, ax, percentlow=1, percenthigh=99, scale='asinh')
+        plt.title("Background Corrected Model")
+        if image_path != None:
+            image_title = "5.3_background_corrected_model.png"
+            plt.savefig(image_path + "/" + image_title)
+        if plot_plots:
+            plt.show()
+        
+        fig, ax = plt.subplots(figsize=(8, 8))
+        imdisplay(np.ma.masked_array(residual_corrected,mask=mask), ax, percentlow=1, percenthigh=99, scale='asinh')
+        plt.title("Background Corrected Model Residual Image")
+        if image_path != None:
+            image_title = "5.4_background_corrected_model_residual.png"
+            plt.savefig(image_path + "/" + image_title)
+        if plot_plots:
+            plt.show()
+
+        return model_corrected
+    
     
