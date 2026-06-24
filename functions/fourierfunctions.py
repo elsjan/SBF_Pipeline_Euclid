@@ -295,11 +295,11 @@ def calculateSBF(residual_fluctuations, mask, psf,
         ifs = []
         for kfit_i_iter in kfit_i:
             for kfit_f_iter in kfit_f:
-                print(kfit_i_iter, kfit_f_iter)
+                print('Using k_ini,k_fin:', kfit_i_iter, kfit_f_iter)
                 if len(psf.shape) == 2:
                     sbf, noise = fitSbfComponents(image_ps, expected_ps, kfit_i_iter, kfit_f_iter, 
-                                                image_path=image_path, image_title=image_title, 
-                                                make_plots=make_plots,plot_plots=plot_plots, plotyrange=plotyrange)
+                                                image_path=None, image_title=image_title, 
+                                                make_plots=False,plot_plots=False, plotyrange=plotyrange)
                     std_sbf = None
                 elif len(psf.shape) == 3:
                     sbfs = []
@@ -333,7 +333,7 @@ def calculateSBF(residual_fluctuations, mask, psf,
             sbf, noise = fitSbfComponents(image_ps, expected_ps, kfit_i_final, kfit_f_final, 
                                         image_path=image_path, image_title=image_title, 
                                         make_plots=make_plots,plot_plots=plot_plots, plotyrange=plotyrange)
-            std_sbf = None
+            std_sbf = 0
         elif len(psf.shape) == 3:
             sbfs = []
             noises = []

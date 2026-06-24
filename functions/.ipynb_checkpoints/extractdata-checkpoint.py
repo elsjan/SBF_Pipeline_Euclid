@@ -28,7 +28,13 @@ def openFits(file_path):
             with fits.open(file_path+ "/" + file) as hdu:
                 data = hdu[0].data
                 wcs = WCS(hdu[0].header)
-                mzp = hdu[0].header['ZP_STACK']
+                try:
+                    mzp = hdu[0].header['ZP_STACK']
+                except:
+                    try:
+                        mzp = float(hdu[0].header['MAGZEROP'])
+                    except:
+                        mzp = float(hdu[0].header['ZPAB'])
                 hdu.close()
     data = data.astype(np.float64)
     return data, wcs, mzp
@@ -106,7 +112,7 @@ def maskBadPixelsAstroscrappy(data_frame, effective_gain=3.1, readnoise=4.5, fil
             satlevel=65535.0,  # Euclid VIS saturation (approx)
             verbose=False
         )
-    elif filter == "H":
+    else: #filter == "H":
         mask_cr, clean_frame = detect_cosmics(
             data_frame,
             gain=effective_gain,
@@ -117,8 +123,8 @@ def maskBadPixelsAstroscrappy(data_frame, effective_gain=3.1, readnoise=4.5, fil
             satlevel=1.118e5,  # Euclid NIR saturation (approx)
             verbose=False
         )
-    else:
-        print("Reminder to set the NIR filter parameters correctly!")
+    # else:
+    #     print("Reminder to set the NIR filter parameters correctly!")
     bad_pixel_mask = mask_cr | star_mask
 
     # optional: mask known bad pixel regions from Euclid consortium
@@ -136,7 +142,7 @@ def maskBadPixelsAstroscrappy(data_frame, effective_gain=3.1, readnoise=4.5, fil
 #############################################################################
 
     
-def extractData(data_path, file_path=None, image_path=None, fits_path=None, filter="VIS", cosmic_ray_method='astroscrappy',make_plots=True, plot_plots=True):
+def extractData(data_path, file_path=None, image_path=None, fits_path=None, field_path = None, filter="VIS", cosmic_ray_method='astroscrappy',make_plots=True, plot_plots=True):
     """
     New version of extractData function
     """
@@ -163,9 +169,36 @@ def extractData(data_path, file_path=None, image_path=None, fits_path=None, filt
     if cosmic_ray_method == 'astroscrappy':
         mask_cr = maskBadPixelsAstroscrappy(data, filter=filter)
     elif cosmic_ray_method == 'lacosmic':
-        mask_cr = maskBadPixelsLacosmic(data, filter=filter)
+        mask_cr = maskBadPixelsLacosmic(data)
     mask_cr = mask_cr | ~mask_nan
     
+    # ugly temporary solution of mask extension for this specific galaxy
+    if 'FCC133' in data_path:
+        if filter=='VIS':
+            print("FCC133 VIS band extra mask used")
+            a = len(mask_cr)//4
+            mask_extra = np.zeros((len(mask_cr),len(mask_cr)))
+            for i in range(len(mask_cr)):
+                for j in range(len(mask_cr)):
+                    val1 = (i-a)*(1/0.18)+262+a
+                    val2 = (i-a)*(-0.18)+440+a
+                    if (j < val1) & (j > val2):
+                        mask_extra[j,i] = 1
+
+            mask_extra2 = data < 0
+            mask_cr = mask_cr | mask_extra.astype(bool)
+            mask_cr = mask_cr | mask_extra2.astype(bool)
+            if make_plots:
+                fig, ax = plt.subplots(figsize=(8, 8))
+                imdisplay(np.ma.masked_array(data, mask_cr), ax, percentlow=1, percenthigh=99, scale='asinh')
+                plt.title("Raw data")
+                image_title = "1.1_raw_data_masked.png"
+                if image_path != None:
+                    plt.savefig(image_path + "/" + image_title)
+                if plot_plots:
+                    plt.show()
+                plt.close()
+
     if make_plots:
         fig, ax = plt.subplots(figsize=(8, 8))
         imdisplay(data, ax, percentlow=1, percenthigh=99, scale='asinh')

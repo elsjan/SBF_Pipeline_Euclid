@@ -5,7 +5,7 @@
 # Version 2. Implementing unity in geometry
 ##########################################################################
 
-version = "3.1"
+version = "3.2"
 # isophote fit, aperture backup
 # SN based on RMS and manual selection option
 
@@ -114,16 +114,16 @@ def MainPipeline(data_path, file_path=None, field_path=None, image_path=None, fi
     if maxarea_sourcemask == None:
         if filter == 'VIS':
             scalar_maxarea = 1
-        elif filter == 'H':
+        else:
             scalar_maxarea = 9
         maxarea_sourcemask = 1500/scalar_maxarea
     if ellipsefitter == 'a1':
         print("\n3. Fitting initial aperture ellipse model ...")
         if filter == 'VIS':
-            residual_basic, model_basic, geometry = fitApertureModel(data, mask_cr=mask_cr, geometry=None,
+            residual_basic, model_basic, geometry = fitApertureModel(data, mask_cr=mask_cr, geometry=None, mgecenter='med',
                                                                     make_plots=make_plots, plot_plots=plot_plots, final=False, image_path=image_path)
         else:
-            residual_basic, model_basic, geometry = fitApertureModel(data, mask_cr=mask_cr, geometry=geometry, 
+            residual_basic, model_basic, geometry = fitApertureModel(data, mask_cr=mask_cr, geometry=geometry, mgecenter='med',
                                                                     make_plots=make_plots, plot_plots=plot_plots, final=False, image_path=image_path)
 
         print("\n4. Finding initial source mask ...")
@@ -136,35 +136,35 @@ def MainPipeline(data_path, file_path=None, field_path=None, image_path=None, fi
 
         print("\n5. Fitting final aperture ellipse model ...")
         if filter == 'VIS':
-            residual_final, model_final, geometry = fitApertureModel(data, mask_cr=source_mask, geometry=None, make_plots=make_plots, 
+            residual_final, model_final, geometry = fitApertureModel(data, mask_cr=source_mask, geometry=None, make_plots=make_plots, mgecenter='med',
                                                                     plot_plots=plot_plots, final=True, image_path=image_path)
         else:
-            residual_final, model_final, geometry = fitApertureModel(data, mask_cr=source_mask, geometry=geometry, make_plots=make_plots, 
+            residual_final, model_final, geometry = fitApertureModel(data, mask_cr=source_mask, geometry=geometry, make_plots=make_plots, mgecenter='med',
                                                                     plot_plots=plot_plots, final=True, image_path=image_path)
 
     else:
-        try:
-            print("\n3. Fitting initial ellipse model ...")
-            if filter == 'VIS':
-                residual_basic, model_basic, geometry, isolist = MainFitEllipseModel(data, mask_cr=mask_cr, geometry=None,
-                                                                                    make_plots=make_plots, plot_plots=plot_plots, 
-                                                                                    image_path=image_path, final=False, method=ellipsefitter, sma_rescale=sma_rescale)
-            else:
-                residual_basic, model_basic, geometry, isolist = MainFitEllipseModel(data, mask_cr=mask_cr, geometry=geometry,
-                                                                                    make_plots=make_plots, plot_plots=plot_plots, 
-                                                                                    image_path=image_path, final=False, method=ellipsefitter, sma_rescale=sma_rescale)
+        # try:
+        #     print("\n3. Fitting initial ellipse model ...")
+        #     if filter == 'VIS':
+        #         residual_basic, model_basic, geometry, isolist = MainFitEllipseModel(data, mask_cr=mask_cr, geometry=None,
+        #                                                                             make_plots=make_plots, plot_plots=plot_plots, 
+        #                                                                             image_path=image_path, final=False, method=ellipsefitter, sma_rescale=sma_rescale)
+        #     else:
+        #         residual_basic, model_basic, geometry, isolist = MainFitEllipseModel(data, mask_cr=mask_cr, geometry=geometry,
+        #                                                                             make_plots=make_plots, plot_plots=plot_plots, 
+        #                                                                             image_path=image_path, final=False, method=ellipsefitter, sma_rescale=sma_rescale)
 
 
-        except:
-            print("\n3. Fitting initial aperture ellipse model ...")
-            if filter == 'VIS':
-                residual_basic, model_basic, geometry = fitApertureModel(data, mask_cr=mask_cr, geometry=None,
-                                                                        make_plots=make_plots, plot_plots=plot_plots, 
-                                                                        final=False, image_path=image_path)
-            else:
-                residual_basic, model_basic, geometry = fitApertureModel(data, mask_cr=mask_cr, geometry=geometry,
-                                                        make_plots=make_plots, plot_plots=plot_plots, 
-                                                        final=False, image_path=image_path)
+        # except:
+        print("\n3. Fitting initial aperture ellipse model ...")
+        if filter == 'VIS':
+            residual_basic, model_basic, geometry = fitApertureModel(data, mask_cr=mask_cr, geometry=None,mgecenter='med',
+                                                                    make_plots=make_plots, plot_plots=plot_plots, 
+                                                                    final=False, image_path=image_path)
+        else:
+            residual_basic, model_basic, geometry = fitApertureModel(data, mask_cr=mask_cr, geometry=geometry,mgecenter='med',
+                                                    make_plots=make_plots, plot_plots=plot_plots, 
+                                                    final=False, image_path=image_path)
 
         print("\n4. Finding initial source mask ...")
         if maskbackgroundsourcesweighted == True:
@@ -177,20 +177,20 @@ def MainPipeline(data_path, file_path=None, field_path=None, image_path=None, fi
         try:
             print("\n5. Fitting final ellipse model ...")
             if filter == 'VIS':
-                residual_final, model_final, geometry, isolist = MainFitEllipseModel(data, mask_cr=source_mask, geometry=None, 
+                residual_final, model_final, geometry, isolist = MainFitEllipseModel(data, mask_cr=source_mask, geometry=None, mgecenter='med',
                                                                             make_plots=make_plots, plot_plots=plot_plots, final=True, image_path=image_path,
                                                                             method=ellipsefitter, sma_rescale=sma_rescale)
             else:
-                residual_final, model_final, geometry, isolist = MainFitEllipseModel(data, mask_cr=source_mask, geometry=geometry, 
+                residual_final, model_final, geometry, isolist = MainFitEllipseModel(data, mask_cr=source_mask, geometry=geometry, mgecenter='med',
                                                                             make_plots=make_plots, plot_plots=plot_plots, final=True, image_path=image_path,
                                                                             method=ellipsefitter, sma_rescale=sma_rescale)
         except:
             print("\n5. Fitting final aperture ellipse model ...")
             if filter == 'VIS':
-                residual_final, model_final, geometry = fitApertureModel(data, mask_cr=source_mask, geometry=None, 
+                residual_final, model_final, geometry = fitApertureModel(data, mask_cr=source_mask, geometry=None, mgecenter='med',
                                                                         make_plots=make_plots, plot_plots=plot_plots, final=True, image_path=image_path)
             else:
-                residual_final, model_final, geometry = fitApertureModel(data, mask_cr=source_mask, geometry=geometry, 
+                residual_final, model_final, geometry = fitApertureModel(data, mask_cr=source_mask, geometry=geometry, mgecenter='med',
                                                                         make_plots=make_plots, plot_plots=plot_plots, final=True, image_path=image_path)
     if galmolcorr == True:
         print("\n5.3 Galaxy model correction ... ")
@@ -256,6 +256,7 @@ def MainPipeline(data_path, file_path=None, field_path=None, image_path=None, fi
         np.savetxt(file_path + "/geometry", geometry_params)
         np.savetxt(file_path + "/nri", nri)
         np.savetxt(file_path + "/kfit", [kfit_i,kfit_f])
+        np.savetxt(file_path + "/sbf", [sbf,std_p0,sbfmag])
         
     if fits_path is not None:
         residual_final_masked = np.where(mask_combined.astype(bool), residual_final, 0)
@@ -355,9 +356,27 @@ def MainPipeline(data_path, file_path=None, field_path=None, image_path=None, fi
             sbfmag_cor = None
 
 
+        del data, model_final, residual_final
+        del source_mask, source_mask_final
+        del mask_model, mask_combined
+        del nri, expected_ps, image_ps
+
+        if 'field_data' in locals():
+            del field_data
+        if 'patch' in locals():
+            del patch, patch_norm, patch_mask
 
         return sbf, std_p0, sbfmag, noise, sbf_cor, sbferr_patch, sbfmag_cor, geometry.sma, rout, total_bckgr, mzp, geometry, Npix
     else:        
+        del data, model_final, residual_final
+        del source_mask, source_mask_final
+        del mask_model, mask_combined
+        del nri, expected_ps, image_ps
+
+        if 'field_data' in locals():
+            del field_data
+        if 'patch' in locals():
+            del patch, patch_norm, patch_mask
         return sbf, std_p0, sbfmag, noise, None,None,None, geometry.sma, rout, total_bckgr, mzp, geometry, Npix
 
 

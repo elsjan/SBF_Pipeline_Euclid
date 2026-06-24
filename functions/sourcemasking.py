@@ -311,10 +311,12 @@ def maskBackgroundSources(data, mask_cr=None, make_plots=False, plot_plots=False
         objects, segmap = unmaskMaxArea(objects, segmap, maxarea)
 
     if geometry is not None:
-        for x,y,i in zip(objects['x'], objects['y'], range(len(objects['x']))):
-            if (np.abs(x - geometry.x0) <= 3) & (np.abs(y - geometry.y0) <= 3):
+        for i, (x, y, a) in enumerate(zip(objects['x'], objects['y'], objects['a'])):
+            dist = np.sqrt((x - geometry.x0)**2 + (y - geometry.y0)**2)
+
+            if dist <= (a + 5):
                 objects = np.delete(objects, i, axis=0)
-                print('Removed source at center galaxy, at:', x, y)
+                print('Removed source overlapping galaxy center, at:', x, y, 'with radius', a)
   
     # Mask them
     mask_sources = np.zeros(data.shape, dtype=bool)
@@ -371,13 +373,15 @@ def maskBackgroundSourcesWeighted(data, model=None, mask_cr=None, make_plots=Fal
         
     if geometry is not None:
         # ugly temporary solution of mask extension for this specific galaxy
-        if 'FCC144' not in image_path:
-            for x,y,i in zip(objects['x'], objects['y'], range(len(objects['x']))):
-                if (np.abs(x - geometry.x0) <= 3) & (np.abs(y - geometry.y0) <= 3):
-                    objects = np.delete(objects, i, axis=0)
-                    print('Removed source at center galaxy, at:', x, y)
-        else:
-            print('Did not remove center source for galaxy FCC144')
+#         if 'FCC144' not in image_path:
+        for i, (x, y, a) in enumerate(zip(objects['x'], objects['y'], objects['a'])):
+            dist = np.sqrt((x - geometry.x0)**2 + (y - geometry.y0)**2)
+
+            if dist <= (a + 5):
+                objects = np.delete(objects, i, axis=0)
+                print('Removed source overlapping galaxy center, at:', x, y, 'with radius', a)
+#         else:
+#             print('Did not remove center source for galaxy FCC144')
     # Mask them
     mask_sources = np.zeros(data.shape, dtype=bool)
     sep.mask_ellipse(mask_sources, objects['x'], objects['y'],
@@ -437,7 +441,7 @@ def findRMSvalue(residual, rms_bckgr, x0, y0, sma, SN,
         plt.ylabel('rms ratio (S/N)')
         plt.grid()
         plt.ylim(0,10)
-        plt.title("RMS")
+        plt.title(f"RMS for SN limit of {SN}")
         if image_path != None:
             image_title = "7.2_rms.png"
             plt.savefig(image_path + "/" + image_title)
@@ -473,6 +477,11 @@ def createRequiredVariables(data, model_final, source_mask_final, total_backgrou
 
         final_rout = findRMSvalue(residual, globalrms, geometry.x0, geometry.y0, geometry.sma, SN,
                                     make_plots=make_plots, plot_plots=plot_plots, image_path=image_path)
+        if final_rout < 24:
+            final_rout = findRMSvalue(residual, globalrms, geometry.x0, geometry.y0, geometry.sma, 2,
+                                    make_plots=make_plots, plot_plots=plot_plots, image_path=image_path)
+        if final_rout < 24:
+            final_rout = 24
 
         mask_outer = maskCircle(data, geometry.x0, geometry.y0, rout=final_rout, rin=0)
         aperture_mask = mask_outer

@@ -28,7 +28,13 @@ def openFits(file_path):
             with fits.open(file_path+ "/" + file) as hdu:
                 data = hdu[0].data
                 wcs = WCS(hdu[0].header)
-                mzp = hdu[0].header['ZP_STACK']
+                try:
+                    mzp = hdu[0].header['ZP_STACK']
+                except:
+                    try:
+                        mzp = float(hdu[0].header['MAGZEROP'])
+                    except:
+                        mzp = float(hdu[0].header['ZPAB'])
                 hdu.close()
     data = data.astype(np.float64)
     return data, wcs, mzp
@@ -106,7 +112,7 @@ def maskBadPixelsAstroscrappy(data_frame, effective_gain=3.1, readnoise=4.5, fil
             satlevel=65535.0,  # Euclid VIS saturation (approx)
             verbose=False
         )
-    elif filter == "H":
+    else: #filter == "H":
         mask_cr, clean_frame = detect_cosmics(
             data_frame,
             gain=effective_gain,
@@ -117,8 +123,8 @@ def maskBadPixelsAstroscrappy(data_frame, effective_gain=3.1, readnoise=4.5, fil
             satlevel=1.118e5,  # Euclid NIR saturation (approx)
             verbose=False
         )
-    else:
-        print("Reminder to set the NIR filter parameters correctly!")
+    # else:
+    #     print("Reminder to set the NIR filter parameters correctly!")
     bad_pixel_mask = mask_cr | star_mask
 
     # optional: mask known bad pixel regions from Euclid consortium
@@ -163,7 +169,7 @@ def extractData(data_path, file_path=None, image_path=None, fits_path=None, fiel
     if cosmic_ray_method == 'astroscrappy':
         mask_cr = maskBadPixelsAstroscrappy(data, filter=filter)
     elif cosmic_ray_method == 'lacosmic':
-        mask_cr = maskBadPixelsLacosmic(data, filter=filter)
+        mask_cr = maskBadPixelsLacosmic(data)
     mask_cr = mask_cr | ~mask_nan
     
     # ugly temporary solution of mask extension for this specific galaxy

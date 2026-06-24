@@ -307,14 +307,16 @@ def maskBackgroundSources(data, mask_cr=None, make_plots=False, plot_plots=False
         objects, segmap = sep.extract(data.astype(np.float64)-bkg.back(), thresh=detect_thresh * bkg.globalrms,
                               mask=mask_cr, minarea=minarea*2, segmentation_map=True)
         
-    if maxarea != None:
+    if maxarea is not None:
         objects, segmap = unmaskMaxArea(objects, segmap, maxarea)
 
-    if geometry != None:
-        for x,y,i in zip(objects['x'], objects['y'], range(len(objects['x']))):
-            if (np.abs(x - geometry.x0) <= 3) & (np.abs(y - geometry.y0) <= 3):
+    if geometry is not None:
+        for i, (x, y, a) in enumerate(zip(objects['x'], objects['y'], objects['a'])):
+            dist = np.sqrt((x - geometry.x0)**2 + (y - geometry.y0)**2)
+
+            if dist <= (a + 5):
                 objects = np.delete(objects, i, axis=0)
-                print('Removed source at center galaxy, at:', x, y)
+                print('Removed source overlapping galaxy center, at:', x, y, 'with radius', a)
   
     # Mask them
     mask_sources = np.zeros(data.shape, dtype=bool)
@@ -322,15 +324,24 @@ def maskBackgroundSources(data, mask_cr=None, make_plots=False, plot_plots=False
                      objects['a'], objects['b'], objects['theta'], r=r)
 
     # Combine
-    mask_combined = mask_sources | mask_cr
+    if mask_cr is not None:
+        mask_combined = mask_sources | mask_cr
+    else:
+        mask_combined = mask_sources
 
     if make_plots:
+        if final==False:
+            title_str = "Initial"
+            nmr_str = '4'
+        elif final==True:
+            title_str = "Final"
+            nmr_str = '6'
         fig, ax = plt.subplots(figsize=(8, 8))
         imdisplay(data, ax, percentlow=1, percenthigh=99, scale='asinh')
-        plt.title("Detected Sources Mask")
+        plt.title(f"{title_str} Detected Sources Mask")
         plt.imshow(mask_combined, origin='lower', cmap='Reds', alpha=0.5)
         if image_path != None:
-            image_title = "6.1_source_mask.png"
+            image_title = f"{nmr_str}.1_{title_str}_source_mask.png"
             plt.savefig(image_path + "/" + image_title)
         if plot_plots:
             plt.show()
@@ -338,7 +349,7 @@ def maskBackgroundSources(data, mask_cr=None, make_plots=False, plot_plots=False
     
     return mask_combined
 
-def maskBackgroundSourcesWeighted(data, model=None,mask_cr=None, make_plots=False, plot_plots=False, detect_thresh=3, minarea=7, maxarea=None, r=2.5, image_path=None, 
+def maskBackgroundSourcesWeighted(data, model=None, mask_cr=None, make_plots=False, plot_plots=False, detect_thresh=3, minarea=7, maxarea=None, r=2.5, image_path=None, 
                                   final=False, geometry=None):
     """
     Detect and mask background sources using SEP (SExtractor).
@@ -350,36 +361,51 @@ def maskBackgroundSourcesWeighted(data, model=None,mask_cr=None, make_plots=Fals
     bkg = sep.Background(data.astype(np.float64), mask=mask_cr, bw=64, bh=64, fw=3, fh=3)
     try:
     # Detect sources
-        objects, segmap = sep.extract(data.astype(np.float64), thresh=detect_thresh * bkg.globalrms, err=model,var=model.astype(np.float64),
+        objects, segmap = sep.extract(data.astype(np.float64), thresh=detect_thresh * bkg.globalrms,var=model.astype(np.float64),
                               mask=mask_cr, minarea=minarea, segmentation_map=True)
     except:
         # Sometimes the galaxy is still too bright, extra background removal can help and sizing up the minarea
         objects, segmap = sep.extract(data.astype(np.float64)-bkg.back(), thresh=detect_thresh * bkg.globalrms,var=model.astype(np.float64),
                               mask=mask_cr, minarea=minarea*2, segmentation_map=True)
         
-    if maxarea != None:
+    if maxarea is not None:
         objects, segmap = unmaskMaxArea(objects, segmap, maxarea)
         
-    if geometry != None:
-        for x,y,i in zip(objects['x'], objects['y'], range(len(objects['x']))):
-            if (np.abs(x - geometry.x0) <= 3) & (np.abs(y - geometry.y0) <= 3):
+    if geometry is not None:
+        # ugly temporary solution of mask extension for this specific galaxy
+#         if 'FCC144' not in image_path:
+        for i, (x, y, a) in enumerate(zip(objects['x'], objects['y'], objects['a'])):
+            dist = np.sqrt((x - geometry.x0)**2 + (y - geometry.y0)**2)
+
+            if dist <= (a + 5):
                 objects = np.delete(objects, i, axis=0)
-                print('Removed source at center galaxy, at:', x, y)
+                print('Removed source overlapping galaxy center, at:', x, y, 'with radius', a)
+#         else:
+#             print('Did not remove center source for galaxy FCC144')
     # Mask them
     mask_sources = np.zeros(data.shape, dtype=bool)
     sep.mask_ellipse(mask_sources, objects['x'], objects['y'],
                      objects['a'], objects['b'], objects['theta'], r=r)
 
     # Combine
-    mask_combined = mask_sources | mask_cr
+    if mask_cr is not None:
+        mask_combined = mask_sources | mask_cr
+    else:
+        mask_combined = mask_sources
 
     if make_plots:
+        if final==False:
+            title_str = "Initial"
+            nmr_str = '4'
+        elif final==True:
+            title_str = "Final"
+            nmr_str = '6'
         fig, ax = plt.subplots(figsize=(8, 8))
         imdisplay(data, ax, percentlow=1, percenthigh=99, scale='asinh')
-        plt.title("Detected Sources Mask")
+        plt.title(f"{title_str} Detected Sources Mask")
         plt.imshow(mask_combined, origin='lower', cmap='Reds', alpha=0.5)
         if image_path != None:
-            image_title = "6.1_source_mask.png"
+            image_title = f"{nmr_str}.1_{title_str}_source_mask.png"
             plt.savefig(image_path + "/" + image_title)
         if plot_plots:
             plt.show()
@@ -387,31 +413,84 @@ def maskBackgroundSourcesWeighted(data, model=None,mask_cr=None, make_plots=Fals
     
     return mask_combined
 
-def createRequiredVariables(data, model_final, source_mask_final, total_background, geometry, SN=None,make_plots=False, plot_plots=False, image_path=None,
+def findRMSvalue(residual, rms_bckgr, x0, y0, sma, SN,
+                make_plots=False, plot_plots=False, image_path=None):
+    rms_calc = lambda arr: np.sqrt(np.mean((arr.flatten())**2))
+
+    rms_list = []
+    final_rout=0
+    for rout in np.arange(0,sma,1):
+        if rout == 0:
+            continue
+
+        ann_mask = maskCircle(residual, x0, y0, rout=rout, rin=0)
+        rms = rms_calc(np.ma.masked_array(residual, ~ann_mask))/rms_bckgr
+        rms_list.append(rms)
+        
+        if SN < rms:
+            final_rout = rout
+    final_rout = int(final_rout)
+    rms_list = np.array(rms_list)
+
+
+    if make_plots:
+        fig, ax = plt.subplots(figsize=(8, 8))
+        plt.scatter(np.arange(len(rms_list)), rms_list, marker='.')
+        plt.vlines(final_rout,0,10, color='red', ls='dashed')
+        plt.xlabel('radius in pixels')
+        plt.ylabel('rms ratio (S/N)')
+        plt.grid()
+        plt.ylim(0,10)
+        plt.title(f"RMS for SN limit of {SN}")
+        if image_path != None:
+            image_title = "7.2_rms.png"
+            plt.savefig(image_path + "/" + image_title)
+        if plot_plots:
+            plt.show()
+    if final_rout < 10:
+        print("!Not high enough SN")
+    print(final_rout)
+    return final_rout
+
+
+def createRequiredVariables(data, model_final, source_mask_final, total_background, 
+                            geometry, SN=None, globalrms=None,
+                            make_plots=False, plot_plots=False, image_path=None,
                             mask_inner_radius=None, mask_outer_radius=None):
     """
     From the data and the model, the nri, model mask, and total mask is returned.
     Now a convolution of the psf and the galaxy model is made, as for the method of Beltrán
     """
-    
-    # geometry.sma *= 3
+
     aperture = EllipticalAperture((geometry.x0, geometry.y0), geometry.sma, geometry.sma*(1-geometry.eps), geometry.pa)
     aperture_mask_obj = aperture.to_mask(method='center',subpixels=1)
     aperture_mask = aperture_mask_obj.to_image(data.shape).astype(bool)
 
-    inner_radius = geometry.sma*0.15
-    if mask_inner_radius != None:
+    inner_radius = geometry.sma*0.03 # this value is still in testing
+
+    if mask_inner_radius is not None:
         inner_radius = mask_inner_radius
     mask_center = maskCircle(data, geometry.x0, geometry.y0, rout=inner_radius, rin=0)
+    final_rout = geometry.sma
+    if SN is not None:
+        residual = np.ma.masked_array(data-model_final, source_mask_final)
 
-    # old version
-    # mask_model = model_final <= 1.5 #* total_background   #ballsy change
-    # mask_combined = np.array(~(mask_model | source_mask_final), dtype=int)
-    if SN != None:
-        aperture_mask = model_final > (SN-1)*total_background
-    if mask_outer_radius != None:
+        final_rout = findRMSvalue(residual, globalrms, geometry.x0, geometry.y0, geometry.sma, SN,
+                                    make_plots=make_plots, plot_plots=plot_plots, image_path=image_path)
+        if final_rout < 24:
+            final_rout = findRMSvalue(residual, globalrms, geometry.x0, geometry.y0, geometry.sma, 2,
+                                    make_plots=make_plots, plot_plots=plot_plots, image_path=image_path)
+        if final_rout < 24:
+            final_rout = 24
+
+        mask_outer = maskCircle(data, geometry.x0, geometry.y0, rout=final_rout, rin=0)
+        aperture_mask = mask_outer
+    if mask_outer_radius is not None:
+
         mask_outer = maskCircle(data, geometry.x0, geometry.y0, rout=mask_outer_radius, rin=0)
         aperture_mask = mask_outer
+        final_rout = mask_outer_radius
+
     # mask for color computation, center included
     mask_model = ~source_mask_final
     mask_model &= aperture_mask
@@ -428,15 +507,22 @@ def createRequiredVariables(data, model_final, source_mask_final, total_backgrou
     nri *= mask_combined
 
     if make_plots:
+        y = geometry.y0
+        x = geometry.x0
+        s = final_rout + 1
         fig, ax = plt.subplots(figsize=(8, 8))
-        imdisplay(nri, ax, percentlow=1, percenthigh=99, scale='linear')
+        imdisplay(nri[y-s:y+s,x-s:x+s], ax, percentlow=1, percenthigh=99, scale='linear')
         plt.title("NRI")
-        if image_path != None:
+        if image_path is not None:
             image_title = "7.1_nri.png"
             plt.savefig(image_path + "/" + image_title)
         if plot_plots:
             plt.show()
-    return mask_model, mask_combined, nri
+    return mask_model, mask_combined, nri, final_rout
+
+
+
+
 
 
 ##############################################################################################
